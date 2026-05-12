@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dlr-network-planning"
+version = "0.1.0"
+description = "110 kV network planning with Dynamic Line Rating (DLR) using SimBench HV1 grid"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1",
+    "pandapower>=2.14",
+    "simbench>=1.0",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "networkx>=3.2",
+    "geopy>=2.4",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+weather-cds = [
+    "cdsapi>=0.7",
+    "xarray>=2024.1",
+    "netcdf4>=1.6",
+]
+
+[project.scripts]
+dlr = "dlr.cli:cli"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dlr"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
