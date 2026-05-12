@@ -1,4 +1,4 @@
-.PHONY: help install install-weather lint format \
+.PHONY: help install install-weather lint format test coverage \
         run run-day run-year \
         run-winter run-spring run-summer run-autumn \
         summary topology diagram weather \
@@ -29,6 +29,12 @@ lint: ## Check code with ruff (no changes)
 format: ## Auto-fix lint issues and format with ruff
 	uv run ruff check --fix src/
 	uv run ruff format src/
+
+test: ## Run the test suite
+	uv run pytest
+
+coverage: ## Run tests with coverage report
+	uv run pytest --cov=dlr --cov-report=term-missing
 
 # ---------------------------------------------------------------------------
 # Power flow studies
