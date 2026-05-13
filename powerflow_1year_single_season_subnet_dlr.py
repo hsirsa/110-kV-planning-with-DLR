@@ -191,7 +191,7 @@ def run_single_season_study(season_name, output_root=None):
         run_timeseries(
             net,
             time_steps=time_steps,
-            run=base.robust_runpp,
+            run=base.voltage_controlled_runpp,
             continue_on_divergence=True,
             verbose=True,
         )

@@ -27,6 +27,27 @@ SUBNET_BUS_NAMES = [
     "HV1 Bus 19",
     "HV1 Bus 35",
 ]
+CONTROLLED_HV_BUS_NAMES = [
+    "HV1 Bus 5",
+    "HV1 Bus 47",
+    "HV1 Bus 21",
+    "HV1 Bus 49",
+    "HV1 Bus 67",
+    "HV1 Bus 19",
+    "HV1 Bus 35",
+]
+CONTROL_METRICS_TABLE = "control_metrics"
+CONTROL_ACTIVATION_THRESHOLD_PU = 1.08
+Q_DROOP_START_PU = 1.06
+Q_DROOP_FULL_PU = 1.08
+FINAL_VOLTAGE_LIMIT_PU = 1.10
+EMERGENCY_CURTAILMENT_BUS_NAMES = ["HV1 Bus 19", "HV1 Bus 49", "HV1 Bus 21"]
+EMERGENCY_CURTAILMENT_STEP_FRACTION = 0.05
+EMERGENCY_CURTAILMENT_MAX_FRACTION = 0.50
+MAX_OLTC_STEP_CHANGE_PER_STAGE = 2
+CONTROL_STAGE_NONE = 0
+CONTROL_STAGE_OLTC_Q = 1
+CONTROL_STAGE_EMERGENCY = 2
 SUBNET_DIR_NAME = "subnet_focus"
 WEATHER_DIR = Path("weather_tampere_dlr")
 AITOLAHTI_WEATHER_CSV = WEATHER_DIR / "Aitolahti_Tampere_Finland_2023_dlr_weather_15min.csv"
@@ -92,6 +113,300 @@ def robust_runpp(net, **kwargs):
         except Exception as err:
             last_error = err
     raise LoadflowNotConverged(f"All solver attempts failed. Last error: {last_error}")
+
+
+def get_subnet_bus_indices(net):
+    return list(get_subnet_bus_map(net, SUBNET_BUS_NAMES).values())
+
+
+def get_controlled_hv_bus_indices(net):
+    return list(get_subnet_bus_map(net, CONTROLLED_HV_BUS_NAMES).values())
+
+
+def get_emergency_curtailment_bus_indices(net):
+    return list(get_subnet_bus_map(net, EMERGENCY_CURTAILMENT_BUS_NAMES).values())
+
+
+def subnet_max_voltage_pu(net, bus_indices):
+    if "res_bus" not in net or net.res_bus.empty or "vm_pu" not in net.res_bus.columns:
+        return float("nan")
+    valid_indices = [idx for idx in bus_indices if idx in net.res_bus.index]
+    if not valid_indices:
+        return float("nan")
+    return float(net.res_bus.loc[valid_indices, "vm_pu"].max())
+
+
+def set_voltage_controller_targets(net, vm_target_pu):
+    if "controller" not in net or net.controller is None or net.controller.empty:
+        return 0
+    updated = 0
+    controller_column = "object" if "object" in net.controller.columns else None
+    for idx in net.controller.index:
+        controller_obj = net.controller.at[idx, controller_column] if controller_column else None
+        if controller_obj is None:
+            continue
+        if hasattr(controller_obj, "vm_set_pu"):
+            controller_obj.vm_set_pu = float(vm_target_pu)
+            updated += 1
+    return updated
+
+
+def subnet_sgen_q_limit_mvar(p_mw):
+    apparent_p = abs(float(p_mw))
+    if apparent_p <= 0.0:
+        return 0.0
+    return apparent_p * math.tan(math.acos(0.95))
+
+
+def apply_subnet_sgen_voltage_droop(net, subnet_bus_indices):
+    if net.sgen.empty:
+        return 0
+    subnet_bus_set = set(int(idx) for idx in subnet_bus_indices)
+    updated = 0
+    droop_span = max(Q_DROOP_FULL_PU - Q_DROOP_START_PU, 1e-9)
+    for sgen_idx in net.sgen.index:
+        bus_idx = int(net.sgen.at[sgen_idx, "bus"])
+        if bus_idx not in subnet_bus_set or bus_idx not in net.res_bus.index:
+            continue
+        vm_pu = float(net.res_bus.at[bus_idx, "vm_pu"])
+        if vm_pu <= Q_DROOP_START_PU:
+            q_mvar = 0.0
+        else:
+            droop = min(max((vm_pu - Q_DROOP_START_PU) / droop_span, 0.0), 1.0)
+            q_limit = subnet_sgen_q_limit_mvar(net.sgen.at[sgen_idx, "p_mw"])
+            q_mvar = -q_limit * droop
+        net.sgen.at[sgen_idx, "q_mvar"] = float(q_mvar)
+        updated += 1
+    return updated
+
+
+def get_total_absorbed_sgen_q_mvar(net, subnet_bus_indices):
+    if net.sgen.empty:
+        return 0.0
+    subnet_mask = net.sgen["bus"].isin(subnet_bus_indices)
+    return float((-net.sgen.loc[subnet_mask, "q_mvar"].clip(upper=0.0)).sum())
+
+
+def get_controlled_oltc_trafo_indices(net, controlled_hv_bus_indices):
+    if net.trafo.empty:
+        return []
+    controlled_set = set(int(idx) for idx in controlled_hv_bus_indices)
+    indices = []
+    for trafo_idx in net.trafo.index:
+        row = net.trafo.loc[trafo_idx]
+        tap_min = row.get("tap_min")
+        tap_max = row.get("tap_max")
+        tap_step_percent = row.get("tap_step_percent")
+        if not bool(row.get("in_service", True)):
+            continue
+        if pd.isna(tap_min) or pd.isna(tap_max) or pd.isna(tap_step_percent):
+            continue
+        if float(tap_step_percent) == 0.0 or float(tap_min) == float(tap_max):
+            continue
+        hv_bus = int(row["hv_bus"])
+        lv_bus = int(row["lv_bus"])
+        hv_kv = float(row.get("vn_hv_kv", 0.0) or 0.0)
+        lv_kv = float(row.get("vn_lv_kv", 0.0) or 0.0)
+        controlled_on_lv = lv_bus in controlled_set and lv_kv <= 120.0 and hv_kv >= 220.0
+        controlled_on_hv = hv_bus in controlled_set and hv_kv <= 120.0 and lv_kv >= 220.0
+        if controlled_on_lv or controlled_on_hv:
+            indices.append(int(trafo_idx))
+    return indices
+
+
+def get_controlled_side_for_trafo(trafo_row, controlled_hv_bus_indices):
+    controlled_set = set(int(idx) for idx in controlled_hv_bus_indices)
+    if int(trafo_row["lv_bus"]) in controlled_set:
+        return "lv"
+    if int(trafo_row["hv_bus"]) in controlled_set:
+        return "hv"
+    return None
+
+
+def get_oltc_step_direction(trafo_row, controlled_side):
+    tap_side = str(trafo_row.get("tap_side", "")).strip().lower()
+    if controlled_side == "lv":
+        return 1 if tap_side == "hv" else -1
+    if controlled_side == "hv":
+        return -1 if tap_side == "hv" else 1
+    return 0
+
+
+def apply_explicit_oltc_adjustment(net, controlled_hv_bus_indices, controlled_hv_max_vm):
+    trafo_indices = get_controlled_oltc_trafo_indices(net, controlled_hv_bus_indices)
+    if not trafo_indices:
+        return []
+    voltage_excess = max(controlled_hv_max_vm - CONTROL_ACTIVATION_THRESHOLD_PU, 0.0)
+    requested_steps = max(1, min(MAX_OLTC_STEP_CHANGE_PER_STAGE, int(math.ceil(voltage_excess / 0.01))))
+    changed = []
+    for trafo_idx in trafo_indices:
+        row = net.trafo.loc[trafo_idx]
+        controlled_side = get_controlled_side_for_trafo(row, controlled_hv_bus_indices)
+        direction = get_oltc_step_direction(row, controlled_side)
+        if direction == 0:
+            continue
+        current_tap = row.get("tap_pos")
+        if pd.isna(current_tap):
+            current_tap = row.get("tap_neutral", 0.0)
+        current_tap = int(round(float(current_tap)))
+        tap_min = int(math.floor(float(row.get("tap_min", current_tap))))
+        tap_max = int(math.ceil(float(row.get("tap_max", current_tap))))
+        target_tap = max(min(current_tap + direction * requested_steps, tap_max), tap_min)
+        if target_tap != current_tap:
+            net.trafo.at[trafo_idx, "tap_pos"] = target_tap
+            changed.append(int(trafo_idx))
+    return changed
+
+
+def control_metric_tap_column(trafo_idx):
+    return f"oltc_tap_pos_trafo_{int(trafo_idx)}"
+
+
+def ensure_control_metrics_table(net):
+    if CONTROL_METRICS_TABLE not in net or not isinstance(net[CONTROL_METRICS_TABLE], pd.DataFrame):
+        net[CONTROL_METRICS_TABLE] = pd.DataFrame(index=[0])
+    metrics_df = net[CONTROL_METRICS_TABLE]
+    defaults = {
+        "max_controlled_hv_vm_pu": float("nan"),
+        "final_max_controlled_hv_vm_pu": float("nan"),
+        "total_sgen_q_absorption_mvar": 0.0,
+        "voltage_control_active": False,
+        "voltage_control_stage_used": CONTROL_STAGE_NONE,
+        "curtailed_mw": 0.0,
+        "final_voltage_limit_satisfied": False,
+    }
+    for column, default_value in defaults.items():
+        if column not in metrics_df.columns:
+            metrics_df[column] = default_value
+        metrics_df.at[0, column] = metrics_df.at[0, column] if 0 in metrics_df.index else default_value
+    try:
+        controlled_hv_bus_indices = get_controlled_hv_bus_indices(net)
+    except Exception:
+        controlled_hv_bus_indices = []
+    for trafo_idx in get_controlled_oltc_trafo_indices(net, controlled_hv_bus_indices):
+        column = control_metric_tap_column(trafo_idx)
+        default_tap = net.trafo.at[trafo_idx, "tap_pos"]
+        if pd.isna(default_tap):
+            default_tap = net.trafo.at[trafo_idx, "tap_neutral"] if "tap_neutral" in net.trafo.columns else 0.0
+        if column not in metrics_df.columns:
+            metrics_df[column] = float(default_tap)
+    return metrics_df
+
+
+def update_control_metrics(net, controlled_hv_bus_indices, initial_max_vm, final_max_vm, voltage_control_active, stage_used, curtailed_mw):
+    metrics_df = ensure_control_metrics_table(net)
+    metrics_df.at[0, "max_controlled_hv_vm_pu"] = float(initial_max_vm) if not np.isnan(initial_max_vm) else float("nan")
+    metrics_df.at[0, "final_max_controlled_hv_vm_pu"] = float(final_max_vm) if not np.isnan(final_max_vm) else float("nan")
+    metrics_df.at[0, "total_sgen_q_absorption_mvar"] = get_total_absorbed_sgen_q_mvar(net, controlled_hv_bus_indices)
+    metrics_df.at[0, "voltage_control_active"] = bool(voltage_control_active)
+    metrics_df.at[0, "voltage_control_stage_used"] = int(stage_used)
+    metrics_df.at[0, "curtailed_mw"] = float(curtailed_mw)
+    metrics_df.at[0, "final_voltage_limit_satisfied"] = bool(not np.isnan(final_max_vm) and final_max_vm <= FINAL_VOLTAGE_LIMIT_PU)
+    for trafo_idx in get_controlled_oltc_trafo_indices(net, controlled_hv_bus_indices):
+        column = control_metric_tap_column(trafo_idx)
+        metrics_df.at[0, column] = float(net.trafo.at[trafo_idx, "tap_pos"])
+
+
+def run_voltage_control_stage(net, **kwargs):
+    control_kwargs = {
+        "algorithm": "nr",
+        "init": "results",
+        "check_connectivity": True,
+        "calculate_voltage_angles": True,
+        "max_iteration": 50,
+        "tolerance_mva": 1e-6,
+        "numba": False,
+        "run_control": True,
+    }
+    control_kwargs.update(kwargs)
+    pp.runpp(net, **control_kwargs)
+
+
+def apply_emergency_wind_curtailment(net, controlled_hv_bus_indices, **kwargs):
+    if net.sgen.empty:
+        return 0.0
+    critical_bus_indices = set(get_emergency_curtailment_bus_indices(net))
+    sgen_indices = [
+        int(idx)
+        for idx in net.sgen.index
+        if int(net.sgen.at[idx, "bus"]) in critical_bus_indices and float(net.sgen.at[idx, "p_mw"]) > 0.0
+    ]
+    if not sgen_indices:
+        return 0.0
+    base_p = {idx: max(float(net.sgen.at[idx, "p_mw"]), 0.0) for idx in sgen_indices}
+    max_iterations = max(1, int(math.ceil(EMERGENCY_CURTAILMENT_MAX_FRACTION / EMERGENCY_CURTAILMENT_STEP_FRACTION)))
+    total_curtailed = 0.0
+    for _ in range(max_iterations):
+        step_curtailed = 0.0
+        for sgen_idx in sgen_indices:
+            max_curtail = base_p[sgen_idx] * EMERGENCY_CURTAILMENT_MAX_FRACTION
+            current_curtail = base_p[sgen_idx] - float(net.sgen.at[sgen_idx, "p_mw"])
+            remaining_curtail = max_curtail - current_curtail
+            if remaining_curtail <= 1e-9:
+                continue
+            step_size = min(base_p[sgen_idx] * EMERGENCY_CURTAILMENT_STEP_FRACTION, remaining_curtail)
+            current_p = float(net.sgen.at[sgen_idx, "p_mw"])
+            new_p = max(current_p - step_size, 0.0)
+            actual_step = current_p - new_p
+            if actual_step <= 0.0:
+                continue
+            net.sgen.at[sgen_idx, "p_mw"] = new_p
+            step_curtailed += actual_step
+        if step_curtailed <= 0.0:
+            break
+        total_curtailed += step_curtailed
+        robust_runpp(net, **kwargs)
+        apply_subnet_sgen_voltage_droop(net, controlled_hv_bus_indices)
+        robust_runpp(net, **kwargs)
+        if subnet_max_voltage_pu(net, controlled_hv_bus_indices) <= FINAL_VOLTAGE_LIMIT_PU:
+            break
+    return total_curtailed
+
+
+def voltage_controlled_runpp(net, **kwargs):
+    ensure_control_metrics_table(net)
+    robust_runpp(net, **kwargs)
+    controlled_hv_bus_indices = get_controlled_hv_bus_indices(net)
+    initial_max_vm = subnet_max_voltage_pu(net, controlled_hv_bus_indices)
+    voltage_control_active = not np.isnan(initial_max_vm) and initial_max_vm > CONTROL_ACTIVATION_THRESHOLD_PU
+    if not voltage_control_active:
+        update_control_metrics(
+            net,
+            controlled_hv_bus_indices,
+            initial_max_vm,
+            initial_max_vm,
+            False,
+            CONTROL_STAGE_NONE,
+            0.0,
+        )
+        return
+
+    stage_used = CONTROL_STAGE_OLTC_Q
+    curtailed_mw = 0.0
+    controller_updates = set_voltage_controller_targets(net, 1.00)
+    apply_subnet_sgen_voltage_droop(net, controlled_hv_bus_indices)
+
+    if controller_updates > 0:
+        run_voltage_control_stage(net, **kwargs)
+    else:
+        apply_explicit_oltc_adjustment(net, controlled_hv_bus_indices, initial_max_vm)
+        robust_runpp(net, **kwargs)
+
+    post_control_max_vm = subnet_max_voltage_pu(net, controlled_hv_bus_indices)
+    if not np.isnan(post_control_max_vm) and post_control_max_vm > FINAL_VOLTAGE_LIMIT_PU:
+        stage_used = CONTROL_STAGE_EMERGENCY
+        curtailed_mw = apply_emergency_wind_curtailment(net, controlled_hv_bus_indices, **kwargs)
+
+    final_max_vm = subnet_max_voltage_pu(net, controlled_hv_bus_indices)
+    update_control_metrics(
+        net,
+        controlled_hv_bus_indices,
+        initial_max_vm,
+        final_max_vm,
+        True,
+        stage_used,
+        curtailed_mw,
+    )
 
 
 def safe_name(value, fallback):
@@ -248,11 +563,17 @@ def add_configured_electric_boilers(net, abs_vals):
 
 def prepare_output_writer(net, time_steps, output_path):
     os.makedirs(output_path, exist_ok=True)
+    metrics_df = ensure_control_metrics_table(net)
     ow = OutputWriter(net, time_steps=time_steps, output_path=output_path, output_file_type=".csv")
     ow.log_variable("res_bus", "vm_pu")
     ow.log_variable("res_line", "i_ka")
     ow.log_variable("res_line", "loading_percent")
     ow.log_variable("res_trafo", "loading_percent")
+    ow.log_variable("sgen", "q_mvar")
+    ow.log_variable("res_sgen", "q_mvar")
+    ow.log_variable("trafo", "tap_pos")
+    for column in metrics_df.columns:
+        ow.log_variable(CONTROL_METRICS_TABLE, column)
     return ow
 
 
@@ -1838,7 +2159,7 @@ def run_season_study(season_name, time_steps, output_root, time_lookup):
         run_timeseries(
             net,
             time_steps=time_steps,
-            run=robust_runpp,
+            run=voltage_controlled_runpp,
             continue_on_divergence=True,
             verbose=True,
         )
