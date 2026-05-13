@@ -4,9 +4,12 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    CONDUCTOR_TEMP_C, DEFAULT_ABSORPTIVITY, DEFAULT_ALPHA, DEFAULT_EMISSIVITY, SIGMA,
+    CONDUCTOR_TEMP_C,
+    DEFAULT_ABSORPTIVITY,
+    DEFAULT_ALPHA,
+    DEFAULT_EMISSIVITY,
 )
-from .network import first_valid_value, get_bus_coordinate_map, get_subnet_positions, safe_name
+from .network import first_valid_value, get_bus_coordinate_map, safe_name
 
 
 def aggregate_count_by_bus(element_df, bus_column, subnet_bus_indices):
@@ -68,8 +71,12 @@ def build_conductor_properties(net, line_row):
         "diameter_m_est": float(diameter_m),
         "resistance_20c_ohm_per_km": float(line_row.get("r_ohm_per_km", std_line.get("r_ohm_per_km", 0.0))),
         "alpha_per_c": float(first_valid_value(std_line.get("alpha"), line_row.get("alpha"), DEFAULT_ALPHA)),
-        "emissivity": float(first_valid_value(std_line.get("emissivity"), line_row.get("emissivity"), DEFAULT_EMISSIVITY)),
-        "absorptivity": float(first_valid_value(std_line.get("absorptivity"), line_row.get("absorptivity"), DEFAULT_ABSORPTIVITY)),
+        "emissivity": float(
+            first_valid_value(std_line.get("emissivity"), line_row.get("emissivity"), DEFAULT_EMISSIVITY)
+        ),
+        "absorptivity": float(
+            first_valid_value(std_line.get("absorptivity"), line_row.get("absorptivity"), DEFAULT_ABSORPTIVITY)
+        ),
         "parallel_count": int(line_row.get("parallel", 1) or 1),
         "line_azimuth_deg": compute_line_azimuth_deg(net, int(line_row["from_bus"]), int(line_row["to_bus"])),
         "dlr_conductor_temp_c": CONDUCTOR_TEMP_C,
@@ -97,8 +104,12 @@ def _build_conductor_props_no_geo(net, line_row, azimuth_deg):
         "diameter_m_est": float(diameter_m),
         "resistance_20c_ohm_per_km": float(line_row.get("r_ohm_per_km", std_line.get("r_ohm_per_km", 0.0))),
         "alpha_per_c": float(first_valid_value(std_line.get("alpha"), line_row.get("alpha"), DEFAULT_ALPHA)),
-        "emissivity": float(first_valid_value(std_line.get("emissivity"), line_row.get("emissivity"), DEFAULT_EMISSIVITY)),
-        "absorptivity": float(first_valid_value(std_line.get("absorptivity"), line_row.get("absorptivity"), DEFAULT_ABSORPTIVITY)),
+        "emissivity": float(
+            first_valid_value(std_line.get("emissivity"), line_row.get("emissivity"), DEFAULT_EMISSIVITY)
+        ),
+        "absorptivity": float(
+            first_valid_value(std_line.get("absorptivity"), line_row.get("absorptivity"), DEFAULT_ABSORPTIVITY)
+        ),
         "parallel_count": int(line_row.get("parallel", 1) or 1),
         "line_azimuth_deg": azimuth_deg,
         "dlr_conductor_temp_c": CONDUCTOR_TEMP_C,
@@ -176,7 +187,8 @@ def build_subnet_component_summary(net, element_type, subnet_bus_indices, label)
 
 def infer_sgen_generation_type(row):
     candidate_columns = [
-        col for col in row.index
+        col
+        for col in row.index
         if any(token in str(col).lower() for token in ["type", "profile", "source", "tech", "energy", "fuel", "name"])
     ]
     text_parts = [str(row.get(col)).strip().lower() for col in candidate_columns if not pd.isna(row.get(col))]
@@ -209,17 +221,33 @@ def build_conductor_validation_summary(line_summary):
         return pd.DataFrame()
     summary = line_summary.copy()
     summary["resistance_match"] = np.isclose(
-        summary["resistance_20c_ohm_per_km"], summary["r_ohm_per_km"], equal_nan=True,
+        summary["resistance_20c_ohm_per_km"],
+        summary["r_ohm_per_km"],
+        equal_nan=True,
     )
     summary["parallel_match"] = summary["parallel_count"].astype(int) == summary["parallel"].fillna(1).astype(int)
     summary["std_type_used_for_dlr"] = summary["std_type"].fillna("").astype(str)
     ordered = [
-        "line_index", "line_name", "std_type", "conductor_id",
-        "from_bus_name", "to_bus_name",
-        "parallel", "parallel_count", "parallel_match",
-        "r_ohm_per_km", "resistance_20c_ohm_per_km", "resistance_match",
-        "x_ohm_per_km", "max_i_ka", "q_mm2", "diameter_m_est",
-        "alpha_per_c", "emissivity", "absorptivity",
-        "line_azimuth_deg", "dlr_conductor_temp_c",
+        "line_index",
+        "line_name",
+        "std_type",
+        "conductor_id",
+        "from_bus_name",
+        "to_bus_name",
+        "parallel",
+        "parallel_count",
+        "parallel_match",
+        "r_ohm_per_km",
+        "resistance_20c_ohm_per_km",
+        "resistance_match",
+        "x_ohm_per_km",
+        "max_i_ka",
+        "q_mm2",
+        "diameter_m_est",
+        "alpha_per_c",
+        "emissivity",
+        "absorptivity",
+        "line_azimuth_deg",
+        "dlr_conductor_temp_c",
     ]
     return summary[[col for col in ordered if col in summary.columns]].copy()

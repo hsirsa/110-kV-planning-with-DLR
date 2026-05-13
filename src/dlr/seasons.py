@@ -2,7 +2,6 @@ import os
 import warnings
 from collections import OrderedDict
 
-import numpy as np
 import pandas as pd
 import simbench as sb
 from pandapower.auxiliary import LoadflowNotConverged
@@ -23,7 +22,6 @@ from .config import (
     GRID_CODE,
     SEASON_MONTHS,
     SEASONAL_OUTPUT_ROOT,
-    SUBNET_BUS_NAMES,
     SUBNET_DIR_NAME,
 )
 from .dlr_calc import build_loading_comparison_timeseries, build_subnet_dlr_timeseries, load_aitolahti_weather
@@ -38,7 +36,7 @@ from .plots import (
     plot_subnet_timeseries_for_season,
     plot_subnet_topology,
 )
-from .powerflow import prepare_output_writer, robust_runpp
+from .powerflow import diverged_time_steps, prepare_output_writer, robust_runpp
 from .subnet import (
     build_conductor_validation_summary,
     build_subnet_bus_summary,
@@ -58,8 +56,7 @@ SEASON_OUTPUT_ROOTS = {
 def load_weather_calendar(max_steps):
     if not AITOLAHTI_WEATHER_CSV.exists():
         raise FileNotFoundError(
-            f"Aitolahti weather file not found: {AITOLAHTI_WEATHER_CSV}. "
-            "Run dlr_weather_tampere_full.py first."
+            f"Aitolahti weather file not found: {AITOLAHTI_WEATHER_CSV}. Run dlr_weather_tampere_full.py first."
         )
     weather_df = pd.read_csv(AITOLAHTI_WEATHER_CSV).reset_index(drop=True)
     weather_df["time_step"] = weather_df.index.astype(int)
@@ -101,7 +98,9 @@ def export_subnet_results(net, abs_vals, time_steps, output_path):
     subnet_bus_indices = list(bus_map.values())
     subnet_bus_set = set(subnet_bus_indices)
     subnet_lines = net.line[net.line["from_bus"].isin(subnet_bus_set) & net.line["to_bus"].isin(subnet_bus_set)].copy()
-    subnet_trafos = net.trafo[net.trafo["hv_bus"].isin(subnet_bus_set) & net.trafo["lv_bus"].isin(subnet_bus_set)].copy()
+    subnet_trafos = net.trafo[
+        net.trafo["hv_bus"].isin(subnet_bus_set) & net.trafo["lv_bus"].isin(subnet_bus_set)
+    ].copy()
     weather_df = load_aitolahti_weather(time_steps)
 
     bus_summary = build_subnet_bus_summary(net, subnet_bus_indices)
@@ -122,7 +121,9 @@ def export_subnet_results(net, abs_vals, time_steps, output_path):
     bus_vm.to_csv(os.path.join(subnet_dir, "subnet_bus_vm_pu.csv"), index=False)
     line_indices = subnet_lines.index.astype(int).tolist()
     line_i_ka = filter_named_results(os.path.join(output_path, "line_i_ka_named.csv"), "line_index", line_indices)
-    line_loading = filter_named_results(os.path.join(output_path, "line_loading_percent_named.csv"), "line_index", line_indices)
+    line_loading = filter_named_results(
+        os.path.join(output_path, "line_loading_percent_named.csv"), "line_index", line_indices
+    )
     line_i_ka.to_csv(os.path.join(subnet_dir, "subnet_line_i_ka.csv"), index=False)
     line_loading.to_csv(os.path.join(subnet_dir, "subnet_line_loading_percent.csv"), index=False)
     trafo_loading = pd.DataFrame()
@@ -143,7 +144,15 @@ def export_subnet_results(net, abs_vals, time_steps, output_path):
     conductor_validation_df.to_csv(os.path.join(subnet_dir, "subnet_dlr_conductor_check.csv"), index=False)
 
     plot_subnet_topology(
-        net, subnet_bus_indices, line_summary, trafo_summary, bus_vm, line_i_ka, line_loading, trafo_loading, dlr_df,
+        net,
+        subnet_bus_indices,
+        line_summary,
+        trafo_summary,
+        bus_vm,
+        line_i_ka,
+        line_loading,
+        trafo_loading,
+        dlr_df,
         os.path.join(subnet_dir, "subnet_topology_results.png"),
     )
 
@@ -156,7 +165,9 @@ def export_subnet_results_for_season(net, abs_vals, time_steps, output_path, tim
     subnet_bus_indices = list(bus_map.values())
     subnet_bus_set = set(subnet_bus_indices)
     subnet_lines = net.line[net.line["from_bus"].isin(subnet_bus_set) & net.line["to_bus"].isin(subnet_bus_set)].copy()
-    subnet_trafos = net.trafo[net.trafo["hv_bus"].isin(subnet_bus_set) & net.trafo["lv_bus"].isin(subnet_bus_set)].copy()
+    subnet_trafos = net.trafo[
+        net.trafo["hv_bus"].isin(subnet_bus_set) & net.trafo["lv_bus"].isin(subnet_bus_set)
+    ].copy()
     if weather_df is None:
         weather_df = load_aitolahti_weather(time_steps)
 
@@ -179,7 +190,9 @@ def export_subnet_results_for_season(net, abs_vals, time_steps, output_path, tim
     bus_vm = filter_named_results(os.path.join(output_path, "bus_vm_pu_named.csv"), "bus_index", subnet_bus_indices)
     line_indices = subnet_lines.index.astype(int).tolist()
     line_i_ka = filter_named_results(os.path.join(output_path, "line_i_ka_named.csv"), "line_index", line_indices)
-    line_loading = filter_named_results(os.path.join(output_path, "line_loading_percent_named.csv"), "line_index", line_indices)
+    line_loading = filter_named_results(
+        os.path.join(output_path, "line_loading_percent_named.csv"), "line_index", line_indices
+    )
     trafo_loading = pd.DataFrame()
     if not subnet_trafos.empty:
         trafo_loading = filter_named_results(
@@ -221,18 +234,34 @@ def export_subnet_results_for_season(net, abs_vals, time_steps, output_path, tim
     summarize_subnet_overvoltage_correlation(generation_analysis_df, season_name)
 
     plot_subnet_timeseries_for_season(
-        bus_vm, line_i_ka, line_loading, dlr_df, generation_analysis_df,
-        time_lookup, time_steps, season_name,
+        bus_vm,
+        line_i_ka,
+        line_loading,
+        dlr_df,
+        generation_analysis_df,
+        time_lookup,
+        time_steps,
+        season_name,
         os.path.join(subnet_dir, "subnet_timeseries.png"),
     )
     plot_subnet_generation_voltage_analysis(
-        generation_analysis_df, time_steps, time_lookup, season_name,
+        generation_analysis_df,
+        time_steps,
+        time_lookup,
+        season_name,
         os.path.join(subnet_dir, "subnet_generation_voltage_analysis.png"),
     )
     plot_subnet_bus_generation_mix(bus_generation_mix_df, os.path.join(subnet_dir, "subnet_bus_generation_mix.png"))
     plot_subnet_topology(
-        net, subnet_bus_indices, line_summary, trafo_summary,
-        bus_vm, line_i_ka, line_loading, trafo_loading, dlr_df,
+        net,
+        subnet_bus_indices,
+        line_summary,
+        trafo_summary,
+        bus_vm,
+        line_i_ka,
+        line_loading,
+        trafo_loading,
+        dlr_df,
         os.path.join(subnet_dir, "subnet_topology_results.png"),
     )
 
@@ -283,6 +312,7 @@ def run_season_study(season_name, time_steps, output_root, time_lookup):
     sb.apply_const_controllers(net, abs_vals)
     prepare_output_writer(net, time_steps, output_path)
 
+    diverged_time_steps.clear()
     try:
         run_timeseries(
             net,
@@ -294,10 +324,25 @@ def run_season_study(season_name, time_steps, output_root, time_lookup):
     except LoadflowNotConverged as err:
         print(f"Season {season_name} stopped on a non-converged step: {err}")
 
+    _report_diverged(season_name, time_steps, time_lookup)
+
     weather_df = load_aitolahti_weather(time_steps)
     export_named_results(net, output_path)
     export_subnet_results_for_season(net, abs_vals, time_steps, output_path, time_lookup, season_name, weather_df)
     export_hv1_results_for_season(net, time_steps, output_path, time_lookup, season_name, weather_df)
+
+
+def _report_diverged(season_name, time_steps, time_lookup):
+    if not diverged_time_steps:
+        print(f"  [{season_name}] All {len(time_steps)} time steps converged.")
+        return
+    pct = 100 * len(diverged_time_steps) / len(time_steps)
+    print(f"  [{season_name}] {len(diverged_time_steps)}/{len(time_steps)} time steps diverged ({pct:.1f}%).")
+    for ts in diverged_time_steps[:10]:
+        label = time_lookup.get(ts, ts)
+        print(f"    step {ts}: {label}")
+    if len(diverged_time_steps) > 10:
+        print(f"    ... and {len(diverged_time_steps) - 10} more.")
 
 
 def run_single_season_study(season_name, output_root=None):
@@ -319,6 +364,7 @@ def run_single_season_study(season_name, output_root=None):
     sb.apply_const_controllers(net, abs_vals)
     prepare_output_writer(net, time_steps, output_path)
 
+    diverged_time_steps.clear()
     try:
         run_timeseries(
             net,
@@ -330,6 +376,7 @@ def run_single_season_study(season_name, output_root=None):
     except LoadflowNotConverged as err:
         print(f"Season {season_name} stopped on a non-converged step: {err}")
 
+    _report_diverged(season_name, time_steps, time_lookup)
     weather_df = load_aitolahti_weather(time_steps)
     export_named_results(net, output_path)
     export_subnet_results_for_season(net, abs_vals, time_steps, output_path, time_lookup, season_name, weather_df)
@@ -437,7 +484,13 @@ def collect_seasonal_dlr_benefit_summary(output_root):
 
 def collect_hv1_cross_season_summary(output_root):
     frames = []
-    required_columns = ["line_index", "name", "max_i_ka", "max_loading_without_dlr_percent", "max_loading_with_dlr_percent"]
+    required_columns = [
+        "line_index",
+        "name",
+        "max_i_ka",
+        "max_loading_without_dlr_percent",
+        "max_loading_with_dlr_percent",
+    ]
     for season_name in SEASON_MONTHS:
         hv1_path = os.path.join(output_root, season_name, "hv1_network", "hv1_line_peak_summary.csv")
         if not os.path.exists(hv1_path):
@@ -459,10 +512,14 @@ def export_cross_season_summary_tables(output_root):
 
     if not subnet_summary.empty:
         subnet_summary.to_csv(os.path.join(output_root, "seasonal_subnet_line_peak_comparison.csv"), index=False)
-        plot_cross_season_overview(subnet_summary, "Subnet", os.path.join(output_root, "seasonal_subnet_line_peak_comparison.png"))
+        plot_cross_season_overview(
+            subnet_summary, "Subnet", os.path.join(output_root, "seasonal_subnet_line_peak_comparison.png")
+        )
     if not hv1_summary.empty:
         hv1_summary.to_csv(os.path.join(output_root, "seasonal_hv1_line_peak_comparison.csv"), index=False)
-        plot_cross_season_overview(hv1_summary, "HV1 network", os.path.join(output_root, "seasonal_hv1_line_peak_comparison.png"))
+        plot_cross_season_overview(
+            hv1_summary, "HV1 network", os.path.join(output_root, "seasonal_hv1_line_peak_comparison.png")
+        )
     if not dlr_summary.empty:
         dlr_summary.to_csv(os.path.join(output_root, "seasonal_subnet_dlr_summary.csv"), index=False)
         plot_seasonal_dlr_benefit_overview(dlr_summary, os.path.join(output_root, "seasonal_subnet_dlr_summary.png"))

@@ -40,11 +40,13 @@ ELECTRIC_BOILER_CONFIGS = [
     },
 ]
 
-SEASON_MONTHS = OrderedDict([
-    ("winter", [1, 2, 12]),
-    ("spring", [3, 4, 5]),
-    ("summer", [6, 7, 8]),
-    ("autumn", [9, 10, 11]),
-])
+SEASON_MONTHS = OrderedDict(
+    [
+        ("winter", [1, 2, 12]),
+        ("spring", [3, 4, 5]),
+        ("summer", [6, 7, 8]),
+        ("autumn", [9, 10, 11]),
+    ]
+)
 SEASONAL_OUTPUT_ROOT = "results_1year_seasons"
 TOP_LINE_COUNT = 20

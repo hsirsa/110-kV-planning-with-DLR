@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import pandas as pd
 import pandapower as pp
+import pandas as pd
 
 from .config import ELECTRIC_BOILER_CONFIGS, TIME_STEP_HOURS
 from .network import get_bus_index_by_name
@@ -13,9 +13,7 @@ def _normalize_boiler_profile(profile_csv):
     if "p_mw" not in profile_df.columns:
         raise ValueError(f"Electric boiler profile must contain 'p_mw': {profile_csv}")
     if "time_step" not in profile_df.columns and "datetime_utc" not in profile_df.columns:
-        raise ValueError(
-            f"Electric boiler profile must contain either 'time_step' or 'datetime_utc': {profile_csv}"
-        )
+        raise ValueError(f"Electric boiler profile must contain either 'time_step' or 'datetime_utc': {profile_csv}")
 
     normalized = profile_df.copy()
     if "datetime_utc" in normalized.columns:
@@ -46,7 +44,9 @@ def _normalize_boiler_profile(profile_csv):
         raise ValueError(f"Electric boiler profile has duplicate time_step rows: {profile_csv}")
 
     q_source = normalized["q_mvar"] if "q_mvar" in normalized.columns else pd.Series(0.0, index=normalized.index)
-    scaling_source = normalized["scaling"] if "scaling" in normalized.columns else pd.Series(1.0, index=normalized.index)
+    scaling_source = (
+        normalized["scaling"] if "scaling" in normalized.columns else pd.Series(1.0, index=normalized.index)
+    )
     normalized["p_mw"] = pd.to_numeric(normalized["p_mw"], errors="coerce").fillna(0.0)
     normalized["q_mvar"] = pd.to_numeric(q_source, errors="coerce").fillna(0.0)
     normalized["scaling"] = pd.to_numeric(scaling_source, errors="coerce").fillna(1.0)

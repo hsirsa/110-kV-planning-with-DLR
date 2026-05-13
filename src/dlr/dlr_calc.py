@@ -4,8 +4,13 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    AITOLAHTI_WEATHER_CSV, CONDUCTOR_TEMP_C, DEFAULT_ABSORPTIVITY, DEFAULT_ALPHA,
-    DEFAULT_EMISSIVITY, SIGMA, TIME_STEP_HOURS,
+    AITOLAHTI_WEATHER_CSV,
+    CONDUCTOR_TEMP_C,
+    DEFAULT_ABSORPTIVITY,
+    DEFAULT_ALPHA,
+    DEFAULT_EMISSIVITY,
+    SIGMA,
+    TIME_STEP_HOURS,
 )
 
 
@@ -22,7 +27,9 @@ def load_aitolahti_weather(time_steps):
     if missing:
         raise ValueError(f"Aitolahti weather file is missing columns: {missing}")
     weather_df["hour_of_day"] = weather_df["time_step"] * TIME_STEP_HOURS
-    return weather_df[["time_step", "time_utc", "hour_of_day", "ambient_temp_c", "wind_speed_mps", "wind_angle_deg", "solar_wm2"]]
+    return weather_df[
+        ["time_step", "time_utc", "hour_of_day", "ambient_temp_c", "wind_speed_mps", "wind_angle_deg", "solar_wm2"]
+    ]
 
 
 def ieee738_ampacity_ka(line_row, weather_row):
@@ -35,17 +42,22 @@ def ieee738_ampacity_ka(line_row, weather_row):
     line_azimuth_deg = float(line_row.get("line_azimuth_deg", 90.0))
     attack_angle_deg = abs(((wind_angle_deg - line_azimuth_deg + 90.0) % 180.0) - 90.0)
     attack_angle_rad = math.radians(attack_angle_deg)
-    angle_factor = 1.194 - math.cos(attack_angle_rad) + 0.194 * math.cos(2.0 * attack_angle_rad) + 0.368 * math.sin(2.0 * attack_angle_rad)
+    angle_factor = (
+        1.194
+        - math.cos(attack_angle_rad)
+        + 0.194 * math.cos(2.0 * attack_angle_rad)
+        + 0.368 * math.sin(2.0 * attack_angle_rad)
+    )
     angle_factor = max(angle_factor, 0.2)
 
     film_temp_k = ((conductor_temp_c + ambient_temp_c) / 2.0) + 273.15
     air_density = 1.225 * 288.15 / film_temp_k
-    air_viscosity = 1.458e-6 * film_temp_k ** 1.5 / (film_temp_k + 110.4)
+    air_viscosity = 1.458e-6 * film_temp_k**1.5 / (film_temp_k + 110.4)
     air_thermal_conductivity = 0.02424 + 7.477e-5 * (film_temp_k - 273.15)
     prandtl = 1006.0 * air_viscosity / air_thermal_conductivity
     reynolds = air_density * wind_speed_mps * diameter_m / air_viscosity
 
-    q_natural = 3.645 * math.sqrt(max(air_density, 1e-9)) * diameter_m ** 0.75 * delta_t ** 1.25
+    q_natural = 3.645 * math.sqrt(max(air_density, 1e-9)) * diameter_m**0.75 * delta_t**1.25
     nusselt = 0.3 + (
         (0.62 * math.sqrt(max(reynolds, 0.0)) * prandtl ** (1.0 / 3.0))
         / ((1.0 + (0.4 / prandtl) ** (2.0 / 3.0)) ** 0.25)
@@ -58,7 +70,7 @@ def ieee738_ampacity_ka(line_row, weather_row):
     absorptivity = float(line_row.get("absorptivity", DEFAULT_ABSORPTIVITY))
     conductor_temp_k = conductor_temp_c + 273.15
     ambient_temp_k = ambient_temp_c + 273.15
-    q_radiative = math.pi * diameter_m * emissivity * SIGMA * (conductor_temp_k ** 4 - ambient_temp_k ** 4)
+    q_radiative = math.pi * diameter_m * emissivity * SIGMA * (conductor_temp_k**4 - ambient_temp_k**4)
     q_solar = absorptivity * float(weather_row["solar_wm2"]) * diameter_m
 
     resistance_20 = float(line_row.get("resistance_20c_ohm_per_km", 0.0))
@@ -83,18 +95,21 @@ def ieee738_ampacity_ka_batch(df):
 
     attack_angle_rad = np.radians(np.abs(((wind_angle_deg - line_azimuth_deg + 90.0) % 180.0) - 90.0))
     angle_factor = np.maximum(
-        1.194 - np.cos(attack_angle_rad) + 0.194 * np.cos(2.0 * attack_angle_rad) + 0.368 * np.sin(2.0 * attack_angle_rad),
+        1.194
+        - np.cos(attack_angle_rad)
+        + 0.194 * np.cos(2.0 * attack_angle_rad)
+        + 0.368 * np.sin(2.0 * attack_angle_rad),
         0.2,
     )
 
     film_temp_k = (conductor_temp_c + ambient_temp_c) / 2.0 + 273.15
     air_density = 1.225 * 288.15 / film_temp_k
-    air_viscosity = 1.458e-6 * film_temp_k ** 1.5 / (film_temp_k + 110.4)
+    air_viscosity = 1.458e-6 * film_temp_k**1.5 / (film_temp_k + 110.4)
     air_thermal_conductivity = 0.02424 + 7.477e-5 * (film_temp_k - 273.15)
     prandtl = 1006.0 * air_viscosity / air_thermal_conductivity
     reynolds = air_density * wind_speed_mps * diameter_m / air_viscosity
 
-    q_natural = 3.645 * np.sqrt(np.maximum(air_density, 1e-9)) * diameter_m ** 0.75 * delta_t ** 1.25
+    q_natural = 3.645 * np.sqrt(np.maximum(air_density, 1e-9)) * diameter_m**0.75 * delta_t**1.25
     nusselt = 0.3 + (
         (0.62 * np.sqrt(np.maximum(reynolds, 0.0)) * prandtl ** (1.0 / 3.0))
         / ((1.0 + (0.4 / prandtl) ** (2.0 / 3.0)) ** 0.25)
@@ -106,7 +121,7 @@ def ieee738_ampacity_ka_batch(df):
     absorptivity = df["absorptivity"].to_numpy(dtype=float)
     conductor_temp_k = conductor_temp_c + 273.15
     ambient_temp_k = ambient_temp_c + 273.15
-    q_radiative = np.pi * diameter_m * emissivity * SIGMA * (conductor_temp_k ** 4 - ambient_temp_k ** 4)
+    q_radiative = np.pi * diameter_m * emissivity * SIGMA * (conductor_temp_k**4 - ambient_temp_k**4)
     q_solar = absorptivity * df["solar_wm2"].to_numpy(dtype=float) * diameter_m
 
     resistance_20 = df["resistance_20c_ohm_per_km"].to_numpy(dtype=float)
@@ -133,8 +148,15 @@ def build_subnet_dlr_timeseries(line_summary, line_i_ka, weather_df):
         how="inner",
     )
     prop_cols = [
-        "line_index", "diameter_m_est", "line_azimuth_deg", "emissivity", "absorptivity",
-        "resistance_20c_ohm_per_km", "alpha_per_c", "parallel_count", "dlr_conductor_temp_c",
+        "line_index",
+        "diameter_m_est",
+        "line_azimuth_deg",
+        "emissivity",
+        "absorptivity",
+        "resistance_20c_ohm_per_km",
+        "alpha_per_c",
+        "parallel_count",
+        "dlr_conductor_temp_c",
     ]
     available_props = [c for c in prop_cols if c in line_summary.columns]
     merged = merged.merge(line_summary[available_props], on="line_index", how="left")
@@ -149,9 +171,17 @@ def build_subnet_dlr_timeseries(line_summary, line_i_ka, weather_df):
         merged["dlr_ka"] > 0.0, 100.0 * merged["i_ka"] / merged["dlr_ka"], np.nan
     )
     out_cols = [
-        "time_step", "hour_of_day", "line_index", "name",
-        "ambient_temp_c", "wind_speed_mps", "wind_angle_deg", "solar_wm2",
-        "actual_i_ka", "dlr_ka", "dlr_utilization_percent",
+        "time_step",
+        "hour_of_day",
+        "line_index",
+        "name",
+        "ambient_temp_c",
+        "wind_speed_mps",
+        "wind_angle_deg",
+        "solar_wm2",
+        "actual_i_ka",
+        "dlr_ka",
+        "dlr_utilization_percent",
     ]
     return merged[[c for c in out_cols if c in merged.columns]].reset_index(drop=True)
 

@@ -18,19 +18,35 @@ def export_result_with_names(csv_path, meta, name_column, index_label, value_col
 
 def export_named_results(net, output_path):
     export_result_with_names(
-        os.path.join(output_path, "res_bus", "vm_pu.csv"), net.bus, "name", "bus_index", "vm_pu",
+        os.path.join(output_path, "res_bus", "vm_pu.csv"),
+        net.bus,
+        "name",
+        "bus_index",
+        "vm_pu",
         os.path.join(output_path, "bus_vm_pu_named.csv"),
     )
     export_result_with_names(
-        os.path.join(output_path, "res_line", "i_ka.csv"), net.line, "name", "line_index", "i_ka",
+        os.path.join(output_path, "res_line", "i_ka.csv"),
+        net.line,
+        "name",
+        "line_index",
+        "i_ka",
         os.path.join(output_path, "line_i_ka_named.csv"),
     )
     export_result_with_names(
-        os.path.join(output_path, "res_line", "loading_percent.csv"), net.line, "name", "line_index", "loading_percent",
+        os.path.join(output_path, "res_line", "loading_percent.csv"),
+        net.line,
+        "name",
+        "line_index",
+        "loading_percent",
         os.path.join(output_path, "line_loading_percent_named.csv"),
     )
     export_result_with_names(
-        os.path.join(output_path, "res_trafo", "loading_percent.csv"), net.trafo, "name", "trafo_index", "loading_percent",
+        os.path.join(output_path, "res_trafo", "loading_percent.csv"),
+        net.trafo,
+        "name",
+        "trafo_index",
+        "loading_percent",
         os.path.join(output_path, "trafo_loading_percent_named.csv"),
     )
 

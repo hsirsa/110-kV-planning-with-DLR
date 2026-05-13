@@ -15,11 +15,13 @@ def cli():
 # Power flow commands
 # ---------------------------------------------------------------------------
 
+
 @cli.command("run-day")
 @click.option("--output-root", default="results_1day", show_default=True, help="Output directory.")
 def run_day_cmd(output_root):
     """Run a 1-day (96 time step) power flow study."""
     from .study import run_day_study
+
     run_day_study(output_root)
 
 
@@ -28,6 +30,7 @@ def run_day_cmd(output_root):
 def run_year_cmd(output_root):
     """Run a full 1-year power flow study (no seasons, no DLR)."""
     from .study import run_year_study
+
     run_year_study(output_root)
 
 
@@ -48,6 +51,7 @@ def run_cmd(season, output_root):
     """Run seasonal power flow studies with DLR."""
     warnings.filterwarnings("ignore", category=FutureWarning)
     import pandas as pd
+
     from .seasons import (
         build_season_time_steps,
         build_time_lookup,
@@ -86,6 +90,7 @@ def run_cmd(season, output_root):
 def summary_cmd(output_root):
     """Collect cross-season comparison tables from existing results."""
     from .seasons import export_cross_season_summary_tables
+
     export_cross_season_summary_tables(output_root)
     click.echo(f"Cross-season summary tables written to: {output_root}")
 
@@ -94,11 +99,13 @@ def summary_cmd(output_root):
 # Topology / diagram commands
 # ---------------------------------------------------------------------------
 
+
 @cli.command("topology")
 @click.option("--output-dir", default="HV1_export", show_default=True, help="Output directory.")
 def topology_cmd(output_dir):
     """Export network topology CSVs and a geo-coordinate diagram."""
     from .topology import run_geo_export
+
     run_geo_export(output_dir)
 
 
@@ -107,12 +114,14 @@ def topology_cmd(output_dir):
 def diagram_cmd(output_dir):
     """Export a BFS tree-layout network diagram (PNG + PDF)."""
     from .topology import run_tree_diagram
+
     run_tree_diagram(output_dir)
 
 
 # ---------------------------------------------------------------------------
 # Weather download command
 # ---------------------------------------------------------------------------
+
 
 @cli.command("weather")
 @click.option("--year", default=2023, show_default=True, help="Year to download.")
@@ -125,5 +134,7 @@ def diagram_cmd(output_dir):
 def weather_cmd(year, output_dir):
     """Download ERA5 weather data (CDS primary, Open-Meteo fallback)."""
     from pathlib import Path
+
     from .weather import run_weather_download
+
     run_weather_download(year=year, out_dir=Path(output_dir))

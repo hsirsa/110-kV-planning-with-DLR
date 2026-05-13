@@ -61,7 +61,7 @@ def _geocode_places(places: list[str]) -> dict[str, tuple[float, float]]:
 
 
 def _uv_to_speed_dir(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    speed = np.sqrt(u ** 2 + v ** 2)
+    speed = np.sqrt(u**2 + v**2)
     direction = (270.0 - np.degrees(np.arctan2(v, u))) % 360.0
     return speed, direction
 
@@ -75,12 +75,19 @@ def _from_cds_era5(client, place: str, lat: float, lon: float, year: int, out_di
         ndays = calendar.monthrange(year, month)[1]
         req = {
             "product_type": ["reanalysis"],
-            "variable": ["2m_temperature", "10m_u_component_of_wind",
-                         "10m_v_component_of_wind", "surface_solar_radiation_downwards"],
-            "year": [f"{year:04d}"], "month": [f"{month:02d}"],
+            "variable": [
+                "2m_temperature",
+                "10m_u_component_of_wind",
+                "10m_v_component_of_wind",
+                "surface_solar_radiation_downwards",
+            ],
+            "year": [f"{year:04d}"],
+            "month": [f"{month:02d}"],
             "day": [f"{d:02d}" for d in range(1, ndays + 1)],
             "time": [f"{h:02d}:00" for h in range(24)],
-            "area": [lat, lon, lat, lon], "data_format": "netcdf", "download_format": "unarchived",
+            "area": [lat, lon, lat, lon],
+            "data_format": "netcdf",
+            "download_format": "unarchived",
         }
         nc_file = out_dir / f"{sname}_{year}_{month:02d}.nc"
         for attempt in range(1, 4):
@@ -93,21 +100,29 @@ def _from_cds_era5(client, place: str, lat: float, lon: float, year: int, out_di
                 time.sleep(15 * attempt)
         ds = xr.open_dataset(nc_file)
         wind_speed, wind_dir = _uv_to_speed_dir(ds["u10"].to_series().values, ds["v10"].to_series().values)
-        frames.append(pd.DataFrame({
-            "time_utc": pd.to_datetime(ds["t2m"].to_series().index, utc=True),
-            "ambient_temp_c": ds["t2m"].to_series().values - 273.15,
-            "wind_speed_mps": wind_speed, "wind_angle_deg": wind_dir,
-            "solar_wm2": np.maximum(ds["ssrd"].to_series().values / 3600.0, 0.0),
-        }))
+        frames.append(
+            pd.DataFrame(
+                {
+                    "time_utc": pd.to_datetime(ds["t2m"].to_series().index, utc=True),
+                    "ambient_temp_c": ds["t2m"].to_series().values - 273.15,
+                    "wind_speed_mps": wind_speed,
+                    "wind_angle_deg": wind_dir,
+                    "solar_wm2": np.maximum(ds["ssrd"].to_series().values / 3600.0, 0.0),
+                }
+            )
+        )
     return pd.concat(frames, ignore_index=True)
 
 
 def _from_open_meteo(lat: float, lon: float, year: int) -> pd.DataFrame:
     params = {
-        "latitude": lat, "longitude": lon,
-        "start_date": f"{year}-01-01", "end_date": f"{year}-12-31",
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": f"{year}-01-01",
+        "end_date": f"{year}-12-31",
         "hourly": "temperature_2m,wind_speed_10m,wind_direction_10m,wind_u_component_10m,wind_v_component_10m,shortwave_radiation",
-        "wind_speed_unit": "ms", "timezone": "UTC",
+        "wind_speed_unit": "ms",
+        "timezone": "UTC",
     }
     r = requests.get("https://archive-api.open-meteo.com/v1/archive", params=params, timeout=90)
     r.raise_for_status()
@@ -121,13 +136,15 @@ def _from_open_meteo(lat: float, lon: float, year: int) -> pd.DataFrame:
         v = np.array(h["wind_v_component_10m"], dtype=float)
         wind_speed, wind_dir = _uv_to_speed_dir(u, v)
         wind_speed, wind_dir = wind_speed.tolist(), wind_dir.tolist()
-    df = pd.DataFrame({
-        "time_utc": pd.to_datetime(h["time"], utc=True),
-        "ambient_temp_c": pd.to_numeric(h["temperature_2m"], errors="coerce"),
-        "wind_speed_mps": pd.to_numeric(wind_speed, errors="coerce"),
-        "wind_angle_deg": pd.to_numeric(wind_dir, errors="coerce"),
-        "solar_wm2": pd.to_numeric(h["shortwave_radiation"], errors="coerce").clip(lower=0.0),
-    })
+    df = pd.DataFrame(
+        {
+            "time_utc": pd.to_datetime(h["time"], utc=True),
+            "ambient_temp_c": pd.to_numeric(h["temperature_2m"], errors="coerce"),
+            "wind_speed_mps": pd.to_numeric(wind_speed, errors="coerce"),
+            "wind_angle_deg": pd.to_numeric(wind_dir, errors="coerce"),
+            "solar_wm2": pd.to_numeric(h["shortwave_radiation"], errors="coerce").clip(lower=0.0),
+        }
+    )
     cols = ["ambient_temp_c", "wind_speed_mps", "wind_angle_deg", "solar_wm2"]
     df[cols] = df[cols].interpolate(limit_direction="both")
     return df

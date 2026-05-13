@@ -12,7 +12,7 @@ from .analysis import (
 )
 from .config import SEASON_MONTHS, TIME_STEP_HOURS, TOP_LINE_COUNT
 from .dlr_calc import build_loading_comparison_timeseries
-from .network import safe_name, get_subnet_positions
+from .network import get_subnet_positions, safe_name
 
 # --- Shared annotation helpers ---
 
@@ -58,9 +58,16 @@ def plot_subnet_bus_generation_mix(bus_mix_df, output_path):
     mean_ax.barh(y_positions, plot_df["mean_load_mw"], color="#7f7f7f", alpha=0.35, label="Mean load")
     mean_ax.barh(y_positions, plot_df["mean_pv_mw"], color="#ffbb78", label="Mean PV")
     mean_ax.barh(y_positions, plot_df["mean_wind_mw"], left=plot_df["mean_pv_mw"], color="#17becf", label="Mean wind")
-    mean_ax.barh(y_positions, plot_df["mean_other_gen_mw"], left=plot_df["mean_pv_mw"] + plot_df["mean_wind_mw"],
-                 color="#2ca02c", label="Mean other generation")
-    mean_ax.scatter(plot_df["mean_net_injection_mw"], y_positions, color="#1f77b4", marker="D", s=36, label="Mean net injection")
+    mean_ax.barh(
+        y_positions,
+        plot_df["mean_other_gen_mw"],
+        left=plot_df["mean_pv_mw"] + plot_df["mean_wind_mw"],
+        color="#2ca02c",
+        label="Mean other generation",
+    )
+    mean_ax.scatter(
+        plot_df["mean_net_injection_mw"], y_positions, color="#1f77b4", marker="D", s=36, label="Mean net injection"
+    )
     mean_ax.set_title("Subnet bus generation mix from seasonal time-series means")
     mean_ax.set_xlabel("Mean power [MW]")
     mean_ax.set_yticks(y_positions)
@@ -72,14 +79,24 @@ def plot_subnet_bus_generation_mix(bus_mix_df, output_path):
     peak_ax.barh(y_positions, plot_df["peak_load_mw"], color="#7f7f7f", alpha=0.35, label="Peak load")
     peak_ax.barh(y_positions, plot_df["peak_pv_mw"], color="#ffbb78", label="Peak PV")
     peak_ax.barh(y_positions, plot_df["peak_wind_mw"], left=plot_df["peak_pv_mw"], color="#17becf", label="Peak wind")
-    peak_ax.barh(y_positions, plot_df["peak_other_gen_mw"], left=plot_df["peak_pv_mw"] + plot_df["peak_wind_mw"],
-                 color="#2ca02c", label="Peak other generation")
-    peak_ax.scatter(plot_df["peak_net_injection_mw"], y_positions, color="#d62728", marker="o", s=36, label="Peak net injection")
+    peak_ax.barh(
+        y_positions,
+        plot_df["peak_other_gen_mw"],
+        left=plot_df["peak_pv_mw"] + plot_df["peak_wind_mw"],
+        color="#2ca02c",
+        label="Peak other generation",
+    )
+    peak_ax.scatter(
+        plot_df["peak_net_injection_mw"], y_positions, color="#d62728", marker="o", s=36, label="Peak net injection"
+    )
     scale = max(plot_df["peak_total_generation_mw"].max(), plot_df["peak_load_mw"].max(), 1.0) * 0.01
     for idx, row in plot_df.iterrows():
         peak_ax.text(
             max(row["peak_total_generation_mw"], row["peak_load_mw"]) + scale,
-            y_positions[idx], row["classification"], va="center", fontsize=8,
+            y_positions[idx],
+            row["classification"],
+            va="center",
+            fontsize=8,
         )
     peak_ax.set_title("Subnet bus generation mix from seasonal peak values")
     peak_ax.set_xlabel("Peak power [MW]")
@@ -112,7 +129,9 @@ def plot_current_vs_dlr(ax, line_i_ka, dlr_df):
         ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
         return
     current_plot = line_i_ka.assign(hour_of_day=line_i_ka["time_step"] * TIME_STEP_HOURS)
-    merged = current_plot.merge(dlr_df[["time_step", "line_index", "dlr_ka"]], on=["time_step", "line_index"], how="left")
+    merged = current_plot.merge(
+        dlr_df[["time_step", "line_index", "dlr_ka"]], on=["time_step", "line_index"], how="left"
+    )
     for label, group in merged.groupby("name"):
         group = group.sort_values("hour_of_day")
         ax.plot(group["hour_of_day"], group["i_ka"], label=f"{label} I")
@@ -138,8 +157,15 @@ def plot_loading_comparison(ax, loading_comparison_df):
 def plot_subnet_timeseries(bus_vm, line_i_ka, line_loading, dlr_df, output_path):
     loading_comparison_df = build_loading_comparison_timeseries(line_loading, dlr_df)
     fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharex=True)
-    plot_grouped_series(axes[0], bus_vm.assign(hour_of_day=bus_vm["time_step"] * TIME_STEP_HOURS),
-                        "hour_of_day", "name", "vm_pu", "Voltage [p.u.]", "Subnet bus voltages")
+    plot_grouped_series(
+        axes[0],
+        bus_vm.assign(hour_of_day=bus_vm["time_step"] * TIME_STEP_HOURS),
+        "hour_of_day",
+        "name",
+        "vm_pu",
+        "Voltage [p.u.]",
+        "Subnet bus voltages",
+    )
     plot_current_vs_dlr(axes[1], line_i_ka, dlr_df)
     plot_loading_comparison(axes[2], loading_comparison_df)
     axes[2].set_xlabel("Hour of day")
@@ -150,7 +176,18 @@ def plot_subnet_timeseries(bus_vm, line_i_ka, line_loading, dlr_df, output_path)
     plt.close(fig)
 
 
-def plot_subnet_topology(net, subnet_bus_indices, line_summary, trafo_summary, bus_vm, line_i_ka, line_loading, trafo_loading, dlr_df, output_path):
+def plot_subnet_topology(
+    net,
+    subnet_bus_indices,
+    line_summary,
+    trafo_summary,
+    bus_vm,
+    line_i_ka,
+    line_loading,
+    trafo_loading,
+    dlr_df,
+    output_path,
+):
     graph = nx.Graph()
     for bus_idx in subnet_bus_indices:
         graph.add_node(int(bus_idx))
@@ -206,8 +243,15 @@ def plot_subnet_topology(net, subnet_bus_indices, line_summary, trafo_summary, b
     for (u, v), label in edge_labels.items():
         x = (pos[u][0] + pos[v][0]) / 2.0
         y = (pos[u][1] + pos[v][1]) / 2.0
-        ax.text(x, y, label, fontsize=7, ha="center", va="center",
-                bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=0.2))
+        ax.text(
+            x,
+            y,
+            label,
+            fontsize=7,
+            ha="center",
+            va="center",
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=0.2),
+        )
     ax.set_title("Subnet power flow and DLR summary")
     ax.axis("off")
     fig.tight_layout()
@@ -252,14 +296,34 @@ def plot_seasonal_loading_comparison(ax, loading_summary_df, month_labels, month
     if loading_summary_df.empty:
         ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
         return
-    ax.plot(loading_summary_df["season_position"], loading_summary_df["max_loading_without_dlr_percent"],
-            color="#d62728", label="Max without DLR")
-    ax.plot(loading_summary_df["season_position"], loading_summary_df["max_loading_with_dlr_percent"],
-            color="#2ca02c", linestyle="--", label="Max with DLR")
-    ax.plot(loading_summary_df["season_position"], loading_summary_df["mean_loading_without_dlr_percent"],
-            color="#ff9896", alpha=0.9, label="Mean without DLR")
-    ax.plot(loading_summary_df["season_position"], loading_summary_df["mean_loading_with_dlr_percent"],
-            color="#98df8a", linestyle=":", alpha=0.9, label="Mean with DLR")
+    ax.plot(
+        loading_summary_df["season_position"],
+        loading_summary_df["max_loading_without_dlr_percent"],
+        color="#d62728",
+        label="Max without DLR",
+    )
+    ax.plot(
+        loading_summary_df["season_position"],
+        loading_summary_df["max_loading_with_dlr_percent"],
+        color="#2ca02c",
+        linestyle="--",
+        label="Max with DLR",
+    )
+    ax.plot(
+        loading_summary_df["season_position"],
+        loading_summary_df["mean_loading_without_dlr_percent"],
+        color="#ff9896",
+        alpha=0.9,
+        label="Mean without DLR",
+    )
+    ax.plot(
+        loading_summary_df["season_position"],
+        loading_summary_df["mean_loading_with_dlr_percent"],
+        color="#98df8a",
+        linestyle=":",
+        alpha=0.9,
+        label="Mean with DLR",
+    )
     annotate_time_points(ax, highlighted_points, "season_position", "max_loading_without_dlr_percent", "#d62728")
     format_season_axis(ax, month_labels, month_positions)
     ax.legend(fontsize=8, ncol=2)
@@ -271,17 +335,28 @@ def plot_seasonal_dlr_benefit(ax, loading_summary_df, month_labels, month_positi
     if loading_summary_df.empty:
         ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
         return
-    ax.fill_between(loading_summary_df["season_position"], 0.0,
-                    loading_summary_df["max_dlr_benefit_percent_points"], color="#9edae5", alpha=0.55, label="Max DLR benefit")
-    ax.plot(loading_summary_df["season_position"], loading_summary_df["mean_dlr_benefit_percent_points"],
-            color="#1f77b4", linewidth=1.6, label="Mean DLR benefit")
+    ax.fill_between(
+        loading_summary_df["season_position"],
+        0.0,
+        loading_summary_df["max_dlr_benefit_percent_points"],
+        color="#9edae5",
+        alpha=0.55,
+        label="Max DLR benefit",
+    )
+    ax.plot(
+        loading_summary_df["season_position"],
+        loading_summary_df["mean_dlr_benefit_percent_points"],
+        color="#1f77b4",
+        linewidth=1.6,
+        label="Mean DLR benefit",
+    )
     annotate_time_points(ax, highlighted_points, "season_position", "max_dlr_benefit_percent_points", "#1f77b4")
     format_season_axis(ax, month_labels, month_positions)
     ax.legend(fontsize=8)
 
 
 def plot_subnet_generation_voltage_analysis(analysis_df, time_steps, time_lookup, season_name, output_path):
-    from .analysis import attach_season_position, build_season_axis_lookup, attach_rank_labels, top_n_time_points
+    from .analysis import attach_rank_labels, attach_season_position, build_season_axis_lookup, top_n_time_points
 
     fig, axes = plt.subplots(2, 1, figsize=(15, 10))
     if analysis_df.empty:
@@ -299,7 +374,9 @@ def plot_subnet_generation_voltage_analysis(analysis_df, time_steps, time_lookup
     voltage_ax = axes[0]
     injection_ax = voltage_ax.twinx()
     voltage_ax.plot(plot_df["season_position"], plot_df["max_vm_pu"], color="#d62728", label="Max bus voltage")
-    injection_ax.plot(plot_df["season_position"], plot_df["net_injection_mw"], color="#1f77b4", alpha=0.8, label="Net injection")
+    injection_ax.plot(
+        plot_df["season_position"], plot_df["net_injection_mw"], color="#1f77b4", alpha=0.8, label="Net injection"
+    )
     for threshold, color in ((1.05, "#ff7f0e"), (1.10, "#9467bd")):
         voltage_ax.axhline(threshold, color=color, linewidth=1.0, linestyle="--", label=f"{threshold:.2f} pu")
     annotate_time_points(voltage_ax, top_voltage_points, "season_position", "max_vm_pu", "#d62728")
@@ -311,11 +388,18 @@ def plot_subnet_generation_voltage_analysis(analysis_df, time_steps, time_lookup
     handles2, labels2 = injection_ax.get_legend_handles_labels()
     voltage_ax.legend(handles1 + handles2, labels1 + labels2, fontsize=8, ncol=2, loc="upper left")
 
-    scatter = axes[1].scatter(plot_df["net_injection_mw"], plot_df["max_vm_pu"],
-                              c=plot_df["season_position"], cmap="viridis", s=20, alpha=0.8)
+    scatter = axes[1].scatter(
+        plot_df["net_injection_mw"], plot_df["max_vm_pu"], c=plot_df["season_position"], cmap="viridis", s=20, alpha=0.8
+    )
     for _, row in top_voltage_points.iterrows():
-        axes[1].annotate(row["rank_label"], (row["net_injection_mw"], row["max_vm_pu"]),
-                         textcoords="offset points", xytext=(4, 4), fontsize=7, color="#d62728")
+        axes[1].annotate(
+            row["rank_label"],
+            (row["net_injection_mw"], row["max_vm_pu"]),
+            textcoords="offset points",
+            xytext=(4, 4),
+            fontsize=7,
+            color="#d62728",
+        )
     for threshold, color in ((1.05, "#ff7f0e"), (1.10, "#9467bd")):
         axes[1].axhline(threshold, color=color, linewidth=1.0, linestyle="--")
     axes[1].axvline(0.0, color="black", linewidth=1.0, linestyle=":")
@@ -331,11 +415,15 @@ def plot_subnet_generation_voltage_analysis(analysis_df, time_steps, time_lookup
     plt.close(fig)
 
 
-def plot_subnet_timeseries_for_season(bus_vm, line_i_ka, line_loading, dlr_df, generation_analysis_df,
-                                      time_lookup, time_steps, season_name, output_path):
+def plot_subnet_timeseries_for_season(
+    bus_vm, line_i_ka, line_loading, dlr_df, generation_analysis_df, time_lookup, time_steps, season_name, output_path
+):
     from .analysis import (
-        attach_season_position, attach_time_utc, build_season_axis_lookup,
-        attach_rank_labels, top_n_time_points,
+        attach_rank_labels,
+        attach_season_position,
+        attach_time_utc,
+        build_season_axis_lookup,
+        top_n_time_points,
     )
 
     bus_vm = attach_time_utc(bus_vm, time_lookup)
@@ -349,8 +437,12 @@ def plot_subnet_timeseries_for_season(bus_vm, line_i_ka, line_loading, dlr_df, g
     dashboard_df = attach_season_position(dashboard_df, season_axis_lookup)
 
     top_voltage_points = attach_rank_labels(top_n_time_points(dashboard_df, "max_vm_pu", n=10), "V")
-    top_loading_points = attach_rank_labels(top_n_time_points(dashboard_df, "max_loading_without_dlr_percent", n=10), "L")
-    top_benefit_points = attach_rank_labels(top_n_time_points(dashboard_df, "max_dlr_benefit_percent_points", n=10), "B")
+    top_loading_points = attach_rank_labels(
+        top_n_time_points(dashboard_df, "max_loading_without_dlr_percent", n=10), "L"
+    )
+    top_benefit_points = attach_rank_labels(
+        top_n_time_points(dashboard_df, "max_dlr_benefit_percent_points", n=10), "B"
+    )
 
     fig, axes = plt.subplots(4, 1, figsize=(16, 16), sharex=True)
     axes[0].plot(dashboard_df["season_position"], dashboard_df["max_vm_pu"], color="#d62728", label="Max voltage")
@@ -366,7 +458,9 @@ def plot_subnet_timeseries_for_season(bus_vm, line_i_ka, line_loading, dlr_df, g
     plot_seasonal_loading_comparison(axes[1], dashboard_df, month_labels, month_positions, top_loading_points)
     plot_seasonal_dlr_benefit(axes[2], dashboard_df, month_labels, month_positions, top_benefit_points)
 
-    axes[3].plot(dashboard_df["season_position"], dashboard_df["net_injection_mw"], color="#1f77b4", label="Net injection")
+    axes[3].plot(
+        dashboard_df["season_position"], dashboard_df["net_injection_mw"], color="#1f77b4", label="Net injection"
+    )
     axes[3].axhline(0.0, color="black", linewidth=1.0, linestyle=":")
     axes[3].set_ylabel("Net injection [MW]")
     axes[3].set_xlabel("Season month")
@@ -394,10 +488,20 @@ def plot_top_lines(ax, summary_df, value_column, title, xlabel):
 def plot_hv1_line_peak_figure(summary_df, season_name, output_path):
     fig, axes = plt.subplots(3, 1, figsize=(14, 16))
     plot_top_lines(axes[0], summary_df, "max_i_ka", f"HV1 max line currents - {season_name.title()}", "Current [kA]")
-    plot_top_lines(axes[1], summary_df, "max_loading_without_dlr_percent",
-                   f"HV1 max line loading without DLR - {season_name.title()}", "Loading [%]")
-    plot_top_lines(axes[2], summary_df, "max_loading_with_dlr_percent",
-                   f"HV1 max line loading with DLR - {season_name.title()}", "Loading [%]")
+    plot_top_lines(
+        axes[1],
+        summary_df,
+        "max_loading_without_dlr_percent",
+        f"HV1 max line loading without DLR - {season_name.title()}",
+        "Loading [%]",
+    )
+    plot_top_lines(
+        axes[2],
+        summary_df,
+        "max_loading_with_dlr_percent",
+        f"HV1 max line loading with DLR - {season_name.title()}",
+        "Loading [%]",
+    )
     fig.tight_layout()
     fig.savefig(output_path, dpi=200)
     plt.close(fig)
@@ -416,7 +520,9 @@ def plot_cross_season_overview(summary_df, scope_label, output_path):
         labels = []
         for season_name in seasons:
             col = f"{season_name}_{metric_suffix}"
-            values.append(pd.to_numeric(summary_df[col], errors="coerce").max() if col in summary_df.columns else float("nan"))
+            values.append(
+                pd.to_numeric(summary_df[col], errors="coerce").max() if col in summary_df.columns else float("nan")
+            )
             labels.append(season_name.title())
         ax.bar(labels, values, color="#1f77b4")
         ax.set_title(f"{scope_label} seasonal comparison: {ylabel}")
@@ -435,16 +541,43 @@ def plot_seasonal_dlr_benefit_overview(summary_df, output_path):
     x = np.arange(len(plot_df))
     width = 0.34
     fig, ax1 = plt.subplots(figsize=(10, 6))
-    ax1.bar(x - width / 2, plot_df["peak_loading_without_dlr_percent"], width=width, color="#d62728", label="Peak loading without DLR")
-    ax1.bar(x + width / 2, plot_df["peak_loading_with_dlr_percent"], width=width, color="#2ca02c", label="Peak loading with DLR")
+    ax1.bar(
+        x - width / 2,
+        plot_df["peak_loading_without_dlr_percent"],
+        width=width,
+        color="#d62728",
+        label="Peak loading without DLR",
+    )
+    ax1.bar(
+        x + width / 2,
+        plot_df["peak_loading_with_dlr_percent"],
+        width=width,
+        color="#2ca02c",
+        label="Peak loading with DLR",
+    )
     ax1.set_ylabel("Peak loading [%]")
     ax1.set_xticks(x)
     ax1.set_xticklabels(plot_df["season_label"])
     ax1.set_title("Seasonal subnet DLR impact summary")
     ax1.grid(True, axis="y", alpha=0.3)
     ax2 = ax1.twinx()
-    ax2.plot(x, plot_df["peak_dlr_benefit_percent_points"], color="#1f77b4", marker="o", linewidth=2.0, label="Peak DLR benefit")
-    ax2.plot(x, plot_df["mean_dlr_benefit_percent_points"], color="#17becf", marker="s", linewidth=1.6, linestyle="--", label="Mean DLR benefit")
+    ax2.plot(
+        x,
+        plot_df["peak_dlr_benefit_percent_points"],
+        color="#1f77b4",
+        marker="o",
+        linewidth=2.0,
+        label="Peak DLR benefit",
+    )
+    ax2.plot(
+        x,
+        plot_df["mean_dlr_benefit_percent_points"],
+        color="#17becf",
+        marker="s",
+        linewidth=1.6,
+        linestyle="--",
+        label="Mean DLR benefit",
+    )
     ax2.set_ylabel("DLR benefit [percentage points]")
     handles1, labels1 = ax1.get_legend_handles_labels()
     handles2, labels2 = ax2.get_legend_handles_labels()

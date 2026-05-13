@@ -15,27 +15,27 @@ import pandas as pd
 
 from .network import safe_name
 
-
 # ---------------------------------------------------------------------------
 # Shared topology builders
 # ---------------------------------------------------------------------------
+
 
 def _build_bus_summary(net):
     line_counts = pd.Series(0, index=net.bus.index, dtype=int)
     if len(net.line):
         line_counts = (
-            line_counts
-            .add(net.line.groupby("from_bus").size(), fill_value=0)
+            line_counts.add(net.line.groupby("from_bus").size(), fill_value=0)
             .add(net.line.groupby("to_bus").size(), fill_value=0)
-            .fillna(0).astype(int)
+            .fillna(0)
+            .astype(int)
         )
     trafo_counts = pd.Series(0, index=net.bus.index, dtype=int)
     if len(net.trafo):
         trafo_counts = (
-            trafo_counts
-            .add(net.trafo.groupby("hv_bus").size(), fill_value=0)
+            trafo_counts.add(net.trafo.groupby("hv_bus").size(), fill_value=0)
             .add(net.trafo.groupby("lv_bus").size(), fill_value=0)
-            .fillna(0).astype(int)
+            .fillna(0)
+            .astype(int)
         )
     ext_grid_buses = set(net.ext_grid["bus"].tolist()) if len(net.ext_grid) else set()
     df = net.bus.copy()
@@ -87,24 +87,34 @@ def _build_bus_connections(net):
         bus_name = safe_name(net.bus.at[bus_idx, "name"], f"bus_{bus_idx}")
         for line_idx, row in net.line[(net.line["from_bus"] == bus_idx) | (net.line["to_bus"] == bus_idx)].iterrows():
             other_bus = int(row["to_bus"]) if int(row["from_bus"]) == int(bus_idx) else int(row["from_bus"])
-            records.append({
-                "bus_index": int(bus_idx), "bus_name": bus_name,
-                "connection_type": "line", "element_index": int(line_idx),
-                "element_name": safe_name(net.line.at[line_idx, "name"], f"line_{line_idx}"),
-                "connected_to_bus": other_bus,
-                "connected_to_bus_name": safe_name(net.bus.at[other_bus, "name"], f"bus_{other_bus}"),
-                "length_km": row.get("length_km", np.nan), "parallel": row.get("parallel", 1),
-            })
+            records.append(
+                {
+                    "bus_index": int(bus_idx),
+                    "bus_name": bus_name,
+                    "connection_type": "line",
+                    "element_index": int(line_idx),
+                    "element_name": safe_name(net.line.at[line_idx, "name"], f"line_{line_idx}"),
+                    "connected_to_bus": other_bus,
+                    "connected_to_bus_name": safe_name(net.bus.at[other_bus, "name"], f"bus_{other_bus}"),
+                    "length_km": row.get("length_km", np.nan),
+                    "parallel": row.get("parallel", 1),
+                }
+            )
         for trafo_idx, row in net.trafo[(net.trafo["hv_bus"] == bus_idx) | (net.trafo["lv_bus"] == bus_idx)].iterrows():
             other_bus = int(row["lv_bus"]) if int(row["hv_bus"]) == int(bus_idx) else int(row["hv_bus"])
-            records.append({
-                "bus_index": int(bus_idx), "bus_name": bus_name,
-                "connection_type": "transformer", "element_index": int(trafo_idx),
-                "element_name": safe_name(net.trafo.at[trafo_idx, "name"], f"trafo_{trafo_idx}"),
-                "connected_to_bus": other_bus,
-                "connected_to_bus_name": safe_name(net.bus.at[other_bus, "name"], f"bus_{other_bus}"),
-                "length_km": np.nan, "parallel": np.nan,
-            })
+            records.append(
+                {
+                    "bus_index": int(bus_idx),
+                    "bus_name": bus_name,
+                    "connection_type": "transformer",
+                    "element_index": int(trafo_idx),
+                    "element_name": safe_name(net.trafo.at[trafo_idx, "name"], f"trafo_{trafo_idx}"),
+                    "connected_to_bus": other_bus,
+                    "connected_to_bus_name": safe_name(net.bus.at[other_bus, "name"], f"bus_{other_bus}"),
+                    "length_km": np.nan,
+                    "parallel": np.nan,
+                }
+            )
     return pd.DataFrame(records)
 
 
@@ -129,13 +139,15 @@ def _export_csvs(net, out_dir, line_filename="line_summary.csv", include_connect
 # Geo-coordinate diagram (Geoplot style)
 # ---------------------------------------------------------------------------
 
+
 def _get_bus_pos_geo(net):
     if hasattr(net, "bus_geodata") and net.bus_geodata is not None and len(net.bus_geodata) > 0:
         cols = {c.lower(): c for c in net.bus_geodata.columns}
         if "x" in cols and "y" in cols:
             pos = {
                 int(b): (float(net.bus_geodata.at[b, cols["x"]]), float(net.bus_geodata.at[b, cols["y"]]))
-                for b in net.bus.index if b in net.bus_geodata.index
+                for b in net.bus.index
+                if b in net.bus_geodata.index
             }
             if pos:
                 return pos, "real"
@@ -158,11 +170,13 @@ def _get_bus_pos_geo(net):
             return pos, "real"
 
     import pandapower.plotting as pp_plot
+
     pp_plot.create_generic_coordinates(net)
     if hasattr(net, "bus_geodata") and net.bus_geodata is not None and len(net.bus_geodata) > 0:
         pos = {
             int(b): (float(net.bus_geodata.at[b, "x"]), float(net.bus_geodata.at[b, "y"]))
-            for b in net.bus.index if b in net.bus_geodata.index
+            for b in net.bus.index
+            if b in net.bus_geodata.index
         }
         if pos:
             return pos, "generic"
@@ -173,7 +187,9 @@ def _get_bus_pos_geo(net):
 def run_geo_export(out_dir="HV1_export"):
     """Export topology CSVs and a geo-coordinate network diagram."""
     import simbench
+
     from .config import GRID_CODE
+
     net = simbench.get_simbench_net(GRID_CODE)
     os.makedirs(out_dir, exist_ok=True)
     bus_df, line_df, trafo_df = _export_csvs(net, out_dir)
@@ -201,15 +217,24 @@ def run_geo_export(out_dir="HV1_export"):
         nx.draw_networkx_edges(G, pos, edgelist=parallel_edges, width=1.8, edge_color="#1f77b4", ax=ax)
 
     ext_grid_buses = set(net.ext_grid["bus"].tolist()) if len(net.ext_grid) else set()
-    nx.draw_networkx_nodes(G, pos,
+    nx.draw_networkx_nodes(
+        G,
+        pos,
         nodelist=[int(b) for b in net.bus.index if int(b) not in ext_grid_buses],
-        node_size=40, node_color="#1f77b4", ax=ax)
+        node_size=40,
+        node_color="#1f77b4",
+        ax=ax,
+    )
     if ext_grid_buses:
         nx.draw_networkx_nodes(G, pos, nodelist=list(ext_grid_buses), node_size=90, node_color="#8e44ad", ax=ax)
 
-    nx.draw_networkx_labels(G, pos,
+    nx.draw_networkx_labels(
+        G,
+        pos,
         labels={int(b): safe_name(net.bus.at[b, "name"], f"bus_{b}") for b in net.bus.index if int(b) in pos},
-        font_size=6, ax=ax)
+        font_size=6,
+        ax=ax,
+    )
 
     line_labels = {
         e: f"{info['length']:.1f} km" if info["count"] == 1 else f"{info['length']:.1f} km ({info['count']} lines)"
@@ -223,6 +248,7 @@ def run_geo_export(out_dir="HV1_export"):
             ax.plot([pos[hv][0], pos[lv][0]], [pos[hv][1], pos[lv][1]], linestyle="--", linewidth=1.2, color="#8e44ad")
 
     from .config import GRID_CODE as _GC
+
     plt.title(f"SimBench {_GC} — diagram ({coord_mode} coordinates)")
     plt.axis("off")
     plt.tight_layout()
@@ -237,14 +263,20 @@ def run_geo_export(out_dir="HV1_export"):
 # Tree-layout diagram (new ploting test style)
 # ---------------------------------------------------------------------------
 
+
 def _build_graph(net):
     graph = nx.Graph()
     for bus_idx in net.bus.index:
         graph.add_node(int(bus_idx))
     for line_idx, row in net.line.iterrows():
-        graph.add_edge(int(row["from_bus"]), int(row["to_bus"]),
-                       kind="line", line_index=int(line_idx),
-                       length_km=row.get("length_km", np.nan), parallel=row.get("parallel", 1))
+        graph.add_edge(
+            int(row["from_bus"]),
+            int(row["to_bus"]),
+            kind="line",
+            line_index=int(line_idx),
+            length_km=row.get("length_km", np.nan),
+            parallel=row.get("parallel", 1),
+        )
     for trafo_idx, row in net.trafo.iterrows():
         graph.add_edge(int(row["hv_bus"]), int(row["lv_bus"]), kind="trafo", trafo_index=int(trafo_idx))
     return graph
@@ -292,11 +324,15 @@ def _offset_segment(x1, y1, x2, y2, offset, order, total):
 def run_tree_diagram(out_dir="hv1_diagram_like_image"):
     """Export topology CSVs and a BFS tree-layout diagram (PNG + PDF)."""
     import simbench
+
     from .config import GRID_CODE
+
     os.makedirs(out_dir, exist_ok=True)
     net = simbench.get_simbench_net(GRID_CODE)
 
-    bus_df, line_df, trafo_df = _export_csvs(net, out_dir, line_filename="line_summary_with_parallel.csv", include_connections=False)
+    bus_df, line_df, trafo_df = _export_csvs(
+        net, out_dir, line_filename="line_summary_with_parallel.csv", include_connections=False
+    )
     pos = _layout_tree(net)
 
     fig, ax = plt.subplots(figsize=(24, 16))
@@ -312,28 +348,48 @@ def run_tree_diagram(out_dir="hv1_diagram_like_image"):
             x2, y2 = pos[tb]
             p1, p2 = _offset_segment(x1, y1, x2, y2, 0.05, order, total)
             is_parallel = bool(row["has_parallel_circuit"])
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]],
-                    color="#1f77b4" if is_parallel else "black",
-                    linewidth=1.2 if is_parallel else 0.9, alpha=0.95, zorder=1)
+            ax.plot(
+                [p1[0], p2[0]],
+                [p1[1], p2[1]],
+                color="#1f77b4" if is_parallel else "black",
+                linewidth=1.2 if is_parallel else 0.9,
+                alpha=0.95,
+                zorder=1,
+            )
             if pd.notna(row.get("length_km", np.nan)):
-                ax.text((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2,
-                        f"{float(row['length_km']):.1f} km", fontsize=5, color="black",
-                        ha="center", va="center",
-                        bbox={"facecolor": "#e6e6e6", "alpha": 0.7, "edgecolor": "none", "pad": 0.05}, zorder=3)
+                ax.text(
+                    (p1[0] + p2[0]) / 2,
+                    (p1[1] + p2[1]) / 2,
+                    f"{float(row['length_km']):.1f} km",
+                    fontsize=5,
+                    color="black",
+                    ha="center",
+                    va="center",
+                    bbox={"facecolor": "#e6e6e6", "alpha": 0.7, "edgecolor": "none", "pad": 0.05},
+                    zorder=3,
+                )
 
     for _, row in trafo_df.iterrows():
         hv, lv = int(row["hv_bus"]), int(row["lv_bus"])
-        ax.plot([pos[hv][0], pos[lv][0]], [pos[hv][1], pos[lv][1]],
-                color="black", linewidth=0.8, linestyle="--", zorder=2)
+        ax.plot(
+            [pos[hv][0], pos[lv][0]], [pos[hv][1], pos[lv][1]], color="black", linewidth=0.8, linestyle="--", zorder=2
+        )
 
-    ax.scatter([pos[b][0] for b in bus_df["bus_index"]],
-               [pos[b][1] for b in bus_df["bus_index"]],
-               s=18, color="#1f77b4", edgecolors="#1f77b4", linewidths=0.3, zorder=4)
+    ax.scatter(
+        [pos[b][0] for b in bus_df["bus_index"]],
+        [pos[b][1] for b in bus_df["bus_index"]],
+        s=18,
+        color="#1f77b4",
+        edgecolors="#1f77b4",
+        linewidths=0.3,
+        zorder=4,
+    )
     for _, row in bus_df.iterrows():
         b = int(row["bus_index"])
         ax.text(pos[b][0] + 0.03, pos[b][1] + 0.01, row["bus_name"], fontsize=5, color="black", zorder=5)
 
     from .config import GRID_CODE
+
     ax.set_title(f"SimBench {GRID_CODE} diagram (bus names + line lengths)", fontsize=11)
     ax.axis("off")
     plt.tight_layout()
